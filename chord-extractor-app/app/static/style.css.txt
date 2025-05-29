@@ -1,0 +1,57 @@
+body {
+    font-family: sans-serif;
+    line-height: 1.6;
+    margin: 0;
+    padding: 20px;
+    background-color: #f4f4f4;
+    color: #333;
+}
+.container {
+    max-width: 800px;
+    margin: auto;
+    background: #fff;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+}
+.section {
+    margin-bottom: 20px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid #eee;
+}
+.section:last-child {
+    border-bottom: none;
+}
+h1, h2, h3 {
+    color: #333;
+}
+input[type="file"], input[type="text"], input[type="number"], select, textarea {
+    width: calc(100% - 22px);
+    padding: 10px;
+    margin-bottom: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    box-sizing: border-box;
+}
+textarea {
+    resize: vertical;
+    min-height: 100px;
+}
+button {
+    background-color: #5cb85c;
+    color: white;
+    padding: 10px 15px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-right: 5px;
+}
+button:hover {
+    background-color: #4cae4c;
+}
+#uploadStatus, #saveStatus, #loadStatus {
+    margin-top: 10px;
+    font-style: italic;
+}
+.error { color: red; }
+.success { color: green; }

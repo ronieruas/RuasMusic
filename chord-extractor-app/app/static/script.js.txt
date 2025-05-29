@@ -1,0 +1,184 @@
+document.addEventListener('DOMContentLoaded', function() {
+    const uploadForm = document.getElementById('uploadForm');
+    const audioFile = document.getElementById('audioFile');
+    const uploadStatus = document.getElementById('uploadStatus');
+    const originalFilenameDisplay = document.getElementById('originalFilename');
+    
+    const chordsTextarea = document.getElementById('chordsTextarea');
+    const semitonesInput = document.getElementById('semitones');
+    const transposeButton = document.getElementById('transposeButton');
+
+    const chordFilenameInput = document.getElementById('chordFilename');
+    const saveChordsButton = document.getElementById('saveChordsButton');
+    const saveStatus = document.getElementById('saveStatus');
+
+    const savedChordsList = document.getElementById('savedChordsList');
+    const loadChordButton = document.getElementById('loadChordButton');
+    const loadStatus = document.getElementById('loadStatus');
+
+    // --- Extração de Áudio ---
+    uploadForm.addEventListener('submit', async function(event) {
+        event.preventDefault();
+        const formData = new FormData();
+        formData.append('audio_file', audioFile.files[0]);
+
+        uploadStatus.textContent = 'Processando áudio... Isso pode levar alguns instantes.';
+        uploadStatus.className = '';
+        originalFilenameDisplay.textContent = 'Nenhum';
+
+        try {
+            const response = await fetch('/upload_audio', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await response.json();
+
+            if (response.ok) {
+                chordsTextarea.value = data.chords;
+                originalFilenameDisplay.textContent = data.original_filename || 'Extraído';
+                // Sugerir nome para salvar baseado no nome original do áudio
+                if (data.original_filename) {
+                    chordFilenameInput.value = data.original_filename.split('.').slice(0, -1).join('.') + ".txt";
+                }
+                uploadStatus.textContent = 'Cifras extraídas com sucesso!';
+                uploadStatus.className = 'success';
+            } else {
+                uploadStatus.textContent = `Erro: ${data.error}`;
+                uploadStatus.className = 'error';
+            }
+        } catch (error) {
+            uploadStatus.textContent = `Erro de rede ou servidor: ${error.message}`;
+            uploadStatus.className = 'error';
+        }
+    });
+
+    // --- Transposição ---
+    transposeButton.addEventListener('click', async function() {
+        const chordsText = chordsTextarea.value;
+        const semitones = parseInt(semitonesInput.value, 10);
+
+        if (!chordsText.trim()) {
+            alert("Nenhuma cifra para transpor.");
+            return;
+        }
+
+        try {
+            const response = await fetch('/transpose', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ chords_text: chordsText, semitones: semitones })
+            });
+            const data = await response.json();
+            if (response.ok) {
+                chordsTextarea.value = data.transposed_chords;
+            } else {
+                alert(`Erro ao transpor: ${data.error}`);
+            }
+        } catch (error) {
+            alert(`Erro de rede ou servidor: ${error.message}`);
+        }
+    });
+
+    // --- Salvar Cifras ---
+    saveChordsButton.addEventListener('click', async function() {
+        const filename = chordFilenameInput.value.trim();
+        const chordsText = chordsTextarea.value;
+
+        if (!filename) {
+            saveStatus.textContent = 'Por favor, insira um nome para o arquivo.';
+            saveStatus.className = 'error';
+            return;
+        }
+        if (!chordsText.trim()) {
+            saveStatus.textContent = 'Nenhuma cifra para salvar.';
+            saveStatus.className = 'error';
+            return;
+        }
+        saveStatus.textContent = 'Salvando...';
+        saveStatus.className = '';
+
+        try {
+            const response = await fetch('/save_chords', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ filename: filename, chords_text: chordsText })
+            });
+            const data = await response.json();
+            if (response.ok) {
+                saveStatus.textContent = data.message;
+                saveStatus.className = 'success';
+                loadSavedChordsList(); // Atualiza a lista de cifras salvas
+            } else {
+                saveStatus.textContent = `Erro: ${data.error}`;
+                saveStatus.className = 'error';
+            }
+        } catch (error) {
+            saveStatus.textContent = `Erro de rede ou servidor: ${error.message}`;
+            saveStatus.className = 'error';
+        }
+    });
+
+    // --- Carregar Lista de Cifras Salvas ---
+    async function loadSavedChordsList() {
+        loadStatus.textContent = 'Carregando lista...';
+        loadStatus.className = '';
+        try {
+            const response = await fetch('/list_chords');
+            const data = await response.json();
+            if (response.ok) {
+                savedChordsList.innerHTML = '<option value="">-- Selecione uma cifra --</option>'; // Limpa e adiciona placeholder
+                data.chord_files.forEach(file => {
+                    const option = document.createElement('option');
+                    option.value = file;
+                    option.textContent = file;
+                    savedChordsList.appendChild(option);
+                });
+                if (data.chord_files.length === 0) {
+                    loadStatus.textContent = 'Nenhuma cifra salva encontrada.';
+                } else {
+                     loadStatus.textContent = 'Lista carregada.';
+                     loadStatus.className = 'success';
+                }
+            } else {
+                loadStatus.textContent = `Erro ao carregar lista: ${data.error}`;
+                loadStatus.className = 'error';
+            }
+        } catch (error) {
+            loadStatus.textContent = `Erro de rede ou servidor: ${error.message}`;
+            loadStatus.className = 'error';
+        }
+    }
+
+    // --- Carregar Cifra Selecionada ---
+    loadChordButton.addEventListener('click', async function() {
+        const selectedFile = savedChordsList.value;
+        if (!selectedFile) {
+            loadStatus.textContent = 'Nenhuma cifra selecionada para carregar.';
+            loadStatus.className = 'error';
+            return;
+        }
+        loadStatus.textContent = 'Carregando cifra...';
+        loadStatus.className = '';
+
+        try {
+            const response = await fetch(`/load_chord_file/${selectedFile}`);
+            const data = await response.json();
+            if (response.ok) {
+                chordsTextarea.value = data.chords_text;
+                chordFilenameInput.value = data.filename; // Preenche o nome do arquivo para facilitar salvar novamente
+                originalFilenameDisplay.textContent = data.filename; // Indica que foi carregado
+                loadStatus.textContent = `Cifra "${data.filename}" carregada.`;
+                loadStatus.className = 'success';
+            } else {
+                loadStatus.textContent = `Erro ao carregar cifra: ${data.error}`;
+                loadStatus.className = 'error';
+            }
+        } catch (error) {
+            loadStatus.textContent = `Erro de rede ou servidor: ${error.message}`;
+            loadStatus.className = 'error';
+        }
+    });
+
+    // Carregar a lista de cifras salvas ao iniciar a página
+    loadSavedChordsList();
+});
