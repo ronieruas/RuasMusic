@@ -1,0 +1,49 @@
+# Usar uma imagem Python oficial
+FROM python:3.9-slim
+
+# Definir o diretório de trabalho
+WORKDIR /app
+
+# Instalar dependências do sistema necessárias para madmom e processamento de áudio
+# build-essential e python3-dev podem ser necessários para compilar algumas dependências do madmom (ex: cython)
+# ffmpeg é crucial para madmom ler diversos formatos de áudio
+# libsndfile1 é outra biblioteca comum para áudio
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    python3-dev \
+    ffmpeg \
+    libsndfile1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copiar o arquivo de requisitos primeiro para aproveitar o cache do Docker
+COPY requirements.txt .
+
+# Instalar Cython separadamente se madmom ou suas dependências precisarem (às vezes ajuda)
+# RUN pip install --no-cache-dir cython
+
+# Instalar as dependências Python
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copiar o restante do código da aplicação
+COPY ./app /app/app
+
+# Criar diretórios de dados dentro do WORKDIR se não existirem (serão mapeados por volumes)
+# RUN mkdir -p /app/app/data/uploads /app/app/data/chords
+# Não é estritamente necessário aqui se os volumes já os criarem,
+# mas garante que existam caso o Flask tente escrever antes do volume ser totalmente funcional.
+
+# Expor a porta que o Gunicorn vai usar
+EXPOSE 5000
+
+# Comando para rodar a aplicação com Gunicorn
+# O Gunicorn é um servidor WSGI HTTP robusto para Python.
+# main:app -> main.py, variável 'app' do Flask
+# --workers 4 -> número de processos worker (ajuste conforme CPU)
+# --bind 0.0.0.0:5000 -> escutar em todas as interfaces na porta 5000
+# --timeout 120 -> aumentar timeout para processamento de áudio mais longo
+CMD ["gunicorn", "--workers", "2", "--timeout", "120", "--bind", "0.0.0.0:5000", "app.main:app"]
+
+# Para desenvolvimento, você pode usar:
+# CMD ["python", "-m", "app.main"]
+# (Mas precisaria de if __name__ == '__main__': app.run(host='0.0.0.0') no main.py)
+# O main.py já tem isso, mas Gunicorn é melhor para "produção" no container.

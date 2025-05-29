@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  chord_app:
+    build: .
+    container_name: chord_extractor_service
+    ports:
+      - "5000:5000" # Mapeia a porta 5000 do host para a 5000 do container
+    volumes:
+      # Mapeia o diretório ./app/data local para /app/app/data no container
+      # Isso garante que os uploads e cifras salvas persistam fora do container.
+      - ./app/data:/app/app/data
+      # Para desenvolvimento, você pode mapear o código fonte para recarregamento automático (hot-reloading)
+      # Se fizer isso, ajuste o CMD no Dockerfile ou use o comando de desenvolvimento do Flask.
+      # - ./app:/app/app 
+    restart: unless-stopped
+    # environment: # Opcional, para configurações
+      # - FLASK_ENV=development # Se usar o servidor de desenvolvimento do Flask
