@@ -1,0 +1,95 @@
+import madmom
+import numpy as np
+import os
+
+# Notas musicais para transposição
+NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+NOTES_FLAT = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"] # Para referência
+
+# Mapeamento simples para normalizar nomes de acordes (pode ser expandido)
+CHORD_MAP = {
+    "N": "N.C." # No Chord
+}
+
+def normalize_chord_name(chord_name):
+    # madmom pode retornar "N" para "No Chord"
+    if chord_name in CHORD_MAP:
+        return CHORD_MAP[chord_name]
+    return chord_name
+
+def extract_chords_from_audio(audio_path):
+    """Extrai acordes de um arquivo de áudio usando madmom."""
+    try:
+        # Usando o processador de reconhecimento de acordes DeepChroma+CRF do madmom
+        proc = madmom.features.chords.DeepChromaChordRecognitionProcessor()
+        act = madmom.features.chords.RNNBachChordsProcessor()(audio_path) # Obter ativações de acordes
+        chords_data = proc(act) # Lista de (início, fim, nome_do_acorde)
+
+        # Simplificar para uma string de acordes únicos em sequência
+        # (pode ser melhorado para mostrar durações ou agrupar acordes repetidos)
+        simplified_chords = []
+        last_chord = None
+        for start_time, end_time, chord_label in chords_data:
+            normalized_label = normalize_chord_name(chord_label)
+            if normalized_label != last_chord:
+                simplified_chords.append(normalized_label)
+                last_chord = normalized_label
+        
+        if not simplified_chords:
+            return "Nenhuma cifra detectada."
+            
+        return " ".join(simplified_chords)
+    except Exception as e:
+        print(f"Erro ao extrair acordes: {e}")
+        return f"Erro ao processar áudio: {e}"
+
+
+def parse_chord(chord_str):
+    """Separa a nota raiz do resto do acorde (qualidade, baixo, etc.)."""
+    if chord_str == "N.C.": # No Chord
+        return "N.C.", ""
+
+    root = ""
+    quality = ""
+    
+    if len(chord_str) > 1 and (chord_str[1] == '#' or chord_str[1] == 'b'):
+        root = chord_str[:2]
+        quality = chord_str[2:]
+    else:
+        root = chord_str[:1]
+        quality = chord_str[1:]
+    return root, quality
+
+def transpose_chord(chord_str, semitones):
+    """Transpõe um único acorde."""
+    if chord_str == "N.C.":
+        return "N.C."
+
+    root, quality = parse_chord(chord_str)
+    
+    # Normalizar para sustenidos se for bemol
+    if "b" in root:
+        try:
+            idx = NOTES_FLAT.index(root)
+            root = NOTES[idx] # Converte para o equivalente com sustenido se houver
+        except ValueError:
+            # Se não encontrar em NOTES_FLAT, pode ser um acorde complexo que não manipulamos bem
+            return chord_str 
+
+
+    try:
+        current_index = NOTES.index(root)
+    except ValueError:
+        # Se a nota raiz não for encontrada (ex: algo como "Sus4" sem raiz clara no início)
+        return chord_str # Retorna o original se não puder transpor
+
+    new_index = (current_index + semitones) % 12
+    transposed_root = NOTES[new_index]
+    
+    return transposed_root + quality
+
+def transpose_chords_text(chords_text, semitones):
+    """Transpõe uma string de acordes separados por espaço."""
+    chords = chords_text.split(' ')
+    transposed_list = [transpose_chord(c, semitones) for c in chords if c.strip()]
+    return " ".join(transposed_list)

@@ -1,0 +1,127 @@
+from flask import Flask, request, jsonify, render_template, send_from_directory
+import os
+import uuid
+from .chord_utils import extract_chords_from_audio, transpose_chords_text
+
+app = Flask(__name__)
+
+# Configuração de diretórios
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+UPLOAD_FOLDER = os.path.join(BASE_DIR, 'data', 'uploads')
+CHORDS_FOLDER = os.path.join(BASE_DIR, 'data', 'chords')
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(CHORDS_FOLDER, exist_ok=True)
+
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['CHORDS_FOLDER'] = CHORDS_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # Limite de 16MB para upload
+
+ALLOWED_EXTENSIONS = {'mp3', 'wav'}
+
+def allowed_file(filename):
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/upload_audio', methods=['POST'])
+def upload_audio():
+    if 'audio_file' not in request.files:
+        return jsonify({'error': 'Nenhum arquivo enviado'}), 400
+    file = request.files['audio_file']
+    if file.filename == '':
+        return jsonify({'error': 'Nenhum arquivo selecionado'}), 400
+    
+    if file and allowed_file(file.filename):
+        original_filename = file.filename
+        # Usar um nome de arquivo único para evitar colisões
+        filename = str(uuid.uuid4()) + os.path.splitext(original_filename)[1]
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(filepath)
+
+        try:
+            chords_text = extract_chords_from_audio(filepath)
+            # Opcional: salvar a cifra extraída automaticamente
+            # chord_filename = os.path.splitext(original_filename)[0] + ".txt"
+            # with open(os.path.join(app.config['CHORDS_FOLDER'], chord_filename), 'w') as f:
+            #     f.write(chords_text)
+            return jsonify({'chords': chords_text, 'original_filename': original_filename})
+        except Exception as e:
+            return jsonify({'error': f'Erro ao processar áudio: {str(e)}'}), 500
+        finally:
+            # Opcional: remover o arquivo de áudio após o processamento
+            if os.path.exists(filepath):
+                 os.remove(filepath)
+    else:
+        return jsonify({'error': 'Tipo de arquivo não permitido'}), 400
+
+@app.route('/transpose', methods=['POST'])
+def transpose():
+    data = request.json
+    chords_text = data.get('chords_text')
+    semitones = data.get('semitones')
+
+    if chords_text is None or semitones is None:
+        return jsonify({'error': 'Dados inválidos'}), 400
+    
+    try:
+        semitones = int(semitones)
+    except ValueError:
+        return jsonify({'error': 'Semitons deve ser um número inteiro'}), 400
+
+    transposed_chords = transpose_chords_text(chords_text, semitones)
+    return jsonify({'transposed_chords': transposed_chords})
+
+@app.route('/save_chords', methods=['POST'])
+def save_chords():
+    data = request.json
+    filename = data.get('filename')
+    chords_text = data.get('chords_text')
+
+    if not filename or not chords_text:
+        return jsonify({'error': 'Nome do arquivo ou conteúdo da cifra ausente'}), 400
+    
+    # Sanitizar nome do arquivo (básico)
+    filename = "".join(c for c in filename if c.isalnum() or c in ('.', '_')).rstrip()
+    if not filename.endswith(".txt"): # Garante extensão .txt
+        filename += ".txt"
+        
+    filepath = os.path.join(app.config['CHORDS_FOLDER'], filename)
+    try:
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write(chords_text)
+        return jsonify({'message': f'Cifra "{filename}" salva com sucesso!'})
+    except Exception as e:
+        return jsonify({'error': f'Erro ao salvar cifra: {str(e)}'}), 500
+
+@app.route('/list_chords', methods=['GET'])
+def list_chords():
+    try:
+        files = [f for f in os.listdir(app.config['CHORDS_FOLDER']) if f.endswith(".txt")]
+        return jsonify({'chord_files': files})
+    except Exception as e:
+        return jsonify({'error': f'Erro ao listar cifras: {str(e)}'}), 500
+
+@app.route('/load_chord_file/<filename>', methods=['GET'])
+def load_chord_file(filename):
+    # Sanitizar filename novamente por segurança
+    clean_filename = "".join(c for c in filename if c.isalnum() or c in ('.', '_')).rstrip()
+    if not clean_filename.endswith(".txt"):
+         return jsonify({'error': 'Nome de arquivo inválido'}), 400
+
+    filepath = os.path.join(app.config['CHORDS_FOLDER'], clean_filename)
+    if os.path.exists(filepath):
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                content = f.read()
+            return jsonify({'filename': clean_filename, 'chords_text': content})
+        except Exception as e:
+            return jsonify({'error': f'Erro ao carregar cifra: {str(e)}'}), 500
+    else:
+        return jsonify({'error': 'Arquivo não encontrado'}), 404
+
+if __name__ == '__main__':
+    # Para desenvolvimento local, não use para produção
+    app.run(host='0.0.0.0', port=5000, debug=True)
